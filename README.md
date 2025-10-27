@@ -68,7 +68,7 @@ Or simply log out and log back in — it’ll start automatically.
 
    * 🟢 **Green** → one or more sessions running.
    * 🔴 **Red** → no sessions detected.
-3. Hovering shows the **last line** of the selected session.
+3. Hovering shows the log of the selected session.
 4. Double-click opens the selected session in a terminal.
 5. Each session has a submenu:
 
