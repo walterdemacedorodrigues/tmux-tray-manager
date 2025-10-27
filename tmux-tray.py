@@ -169,16 +169,30 @@ def _pane_pid(session: str) -> Optional[int]:
     except Exception:
         return None
 
-def _pids_in_pgid(pgid: int) -> List[int]:
-    txt = out(f"ps -o pid= -g {pgid} 2>/dev/null")
-    if not txt:
-        return []
-    pids: List[int] = []
-    for line in txt.splitlines():
-        line = line.strip()
-        if line.isdigit():
-            pids.append(int(line))
-    return sorted(set(pids))
+def _kill_process_tree(pid: int) -> None:
+    """Mata um processo e toda sua árvore de filhos recursivamente."""
+    try:
+        # Primeiro tenta SIGTERM em toda a árvore
+        subprocess.run(["pkill", "-TERM", "-P", str(pid)], timeout=2)
+        time.sleep(0.5)
+        # Mata o processo principal
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        time.sleep(1.0)
+        
+        # Se ainda houver processos vivos, força SIGKILL
+        result = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True)
+        if result.returncode == 0:  # Ainda há filhos vivos
+            subprocess.run(["pkill", "-KILL", "-P", str(pid)], timeout=2)
+            time.sleep(0.3)
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    except Exception:
+        pass
 
 # ===== string cleaning =====
 def _clean_tmux_string(s: str) -> str:
