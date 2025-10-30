@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# tmux-tray.py — KDE/Wayland tray controller for tmux with in-memory session state
+# tmux-tray.py VERSÃO 2 — KDE/Wayland tray controller for tmux with in-memory session state
 # - Dynamic session list (from tmux)
 # - Per-session submenu: open / restart / kill
-# - Hover selector (radio) + tooltip (last line)
+# - Hover selector (radio) + tooltip (last line)  [AGORA: tooltip com logs, tail eficiente]
 # - Safe restart:
 #     1) use in-memory state (cwd/cmd) collected live
 #     2) send Ctrl-C; PGID cleanup (TERM->KILL)
@@ -15,6 +15,12 @@ from typing import List, Optional, Tuple, Dict
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PySide6.QtGui import QIcon, QAction, QActionGroup
 from PySide6.QtCore import QTimer
+
+# ===== knobs do tooltip de logs =====
+SHOW_LOGS_IN_TOOLTIP = True
+LOG_LINES = 12          # quantas linhas finais capturar
+LOG_MAX_CHARS = 1200    # teto de caracteres no tooltip
+LOG_REFRESH_MS = 1500   # não recapturar logs mais rápido que isso
 
 # ===== in-memory state =====
 # STATE[session] = {"cwd": str|None, "cmd": str|None, "ts": float}
@@ -152,47 +158,24 @@ def attach(session: str):
 def kill_session(session: str):
     tmux_run(["kill-session", "-t", session])
 
-def get_pane_output(session: str) -> str:
-    """Captura o output visível da pane."""
-    rc, stdout, _, _ = tmux_out(["capture-pane", "-p", "-t", session])
-    if rc == 0 and stdout:
-        return stdout
-    return "(no output)"
-
-def _pane_pid(session: str) -> Optional[int]:
-    rc, stdout, _, _ = tmux_out(["display", "-p", "-t", session, "#{pane_pid}"])
-    if rc != 0:
-        return None
-    try:
-        pid = int(stdout.strip())
-        return pid if pid > 0 else None
-    except Exception:
-        return None
-
-def _kill_process_tree(pid: int) -> None:
-    """Mata um processo e toda sua árvore de filhos recursivamente."""
-    try:
-        # Primeiro tenta SIGTERM em toda a árvore
-        subprocess.run(["pkill", "-TERM", "-P", str(pid)], timeout=2)
-        time.sleep(0.5)
-        # Mata o processo principal
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        time.sleep(1.0)
-        
-        # Se ainda houver processos vivos, força SIGKILL
-        result = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True)
-        if result.returncode == 0:  # Ainda há filhos vivos
-            subprocess.run(["pkill", "-KILL", "-P", str(pid)], timeout=2)
-            time.sleep(0.3)
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-    except Exception:
-        pass
+# ===== logs da pane (com tail eficiente) =====
+def get_pane_tail(session: str, lines: int = LOG_LINES) -> str:
+    """
+    Captura últimas N linhas visíveis da pane.
+    Usa -J (join wrapped lines) e -S -N para limitar.
+    """
+    # -J junta linhas quebradas; -S -{lines} começa N linhas atrás
+    rc, stdout, _, _ = tmux_out(["capture-pane", "-pJ", "-t", session, "-S", f"-{max(1, lines)}"])
+    if rc != 0 or not stdout:
+        return "(no output)"
+    text = stdout.strip()
+    if len(text) > LOG_MAX_CHARS:
+        text = text[-LOG_MAX_CHARS:]
+        # garante que não começa no meio de uma linha
+        nl = text.find("\n")
+        if nl != -1:
+            text = text[nl+1:]
+    return text
 
 # ===== string cleaning =====
 def _clean_tmux_string(s: str) -> str:
@@ -206,30 +189,60 @@ def _clean_tmux_string(s: str) -> str:
     return s
 
 # ===== live state collector =====
+def _pane_pid(session: str) -> Optional[int]:
+    rc, stdout, _, _ = tmux_out(["display", "-p", "-t", session, "#{pane_pid}"])
+    if rc != 0:
+        return None
+    try:
+        pid = int(stdout.strip())
+        return pid if pid > 0 else None
+    except Exception:
+        return None
+
+def _group_has_members(pgid: int) -> bool:
+    try:
+        r = subprocess.run(["ps", "-o", "pid=", "-g", str(pgid)], capture_output=True, text=True, timeout=2)
+        return bool(r.stdout.strip())
+    except Exception:
+        return False
+
+def _kill_process_tree(pid: int) -> None:
+    try:
+        subprocess.run(["pkill", "-TERM", "-P", str(pid)], timeout=2)
+        time.sleep(0.5)
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        time.sleep(1.0)
+        try:
+            pgid = os.getpgid(pid)
+        except Exception:
+            pgid = None
+        if pgid and _group_has_members(pgid):
+            subprocess.run(["pkill", "-KILL", "-g", str(pgid)], timeout=2)
+            time.sleep(0.3)
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    except Exception:
+        pass
+
 def _get_running_command(session: str) -> Optional[str]:
-    """
-    Tenta obter o comando REALMENTE em execução na pane.
-    Usa ps para pegar o processo filho do tmux, não o pane_start_command.
-    """
     pid = _pane_pid(session)
     if not pid:
         return None
-    
     try:
         result = subprocess.run(
             ["ps", "--ppid", str(pid), "-o", "pid=,cmd="],
-            capture_output=True,
-            text=True,
-            timeout=2
+            capture_output=True, text=True, timeout=2
         )
-        
         if result.returncode != 0:
             return None
-            
         lines = result.stdout.strip().split('\n')
         if not lines:
             return None
-            
         shells = {"sh", "bash", "zsh", "fish", "dash", "-bash", "-zsh", "-fish"}
         for line in lines:
             parts = line.strip().split(None, 1)
@@ -239,37 +252,32 @@ def _get_running_command(session: str) -> Optional[str]:
             cmd_base = os.path.basename(cmd.split()[0])
             if cmd_base not in shells:
                 return cmd
-                
         return None
     except Exception:
         return None
 
 def collect_session_state(session: str):
-    """Refresh STATE[session] with live data from tmux."""
     rc_cwd, cwd, _, _ = tmux_out(["display", "-p", "-t", session, "#{pane_current_path}"])
     running_cmd = _get_running_command(session)
-    
+
     if not running_cmd:
         rc_cmd, cmd, _, _ = tmux_out(["display", "-p", "-t", session, "#{pane_start_command}"])
         if rc_cmd == 0 and cmd:
             cmd = _clean_tmux_string(cmd)
             running_cmd = cmd if cmd else None
-    
+
     if rc_cwd == 0 or running_cmd:
         st = get_state(session)
         changed = False
-        
         if rc_cwd == 0 and cwd and cwd != st.get("cwd"):
             st["cwd"] = cwd
             changed = True
-            
         if running_cmd and running_cmd != st.get("cmd"):
             shells = {"sh", "bash", "zsh", "fish", "dash", "-bash", "-zsh", "-fish"}
             cmd_base = os.path.basename(running_cmd.split()[0])
             if cmd_base not in shells:
                 st["cmd"] = running_cmd
                 changed = True
-                
         if changed:
             st["ts"] = time.time()
 
@@ -277,7 +285,7 @@ def collect_all_sessions_state():
     for s in list_sessions():
         collect_session_state(s)
 
-# ===== create session =====
+# ===== create / restart =====
 def create_session(session: str, cwd: Optional[str], start_cmd: Optional[str]) -> bool:
     args = ["new-session", "-d", "-s", session]
     if cwd:
@@ -287,15 +295,7 @@ def create_session(session: str, cwd: Optional[str], start_cmd: Optional[str]) -
     rc, _, _, _ = tmux_run(args)
     return rc == 0
 
-# ===== restart session =====
 def restart_session(session: str, tray: Optional[QSystemTrayIcon] = None):
-    """
-    Safe restart usando metadados em memória:
-      - Usa cwd/cmd do STATE (coletado continuamente).
-      - Envia Ctrl-C; limpa PGID (TERM->KILL).
-      - Se tmux server/session sumir, recria com cwd/cmd salvo.
-      - Caso contrário respawn no lugar com cwd + cmd.
-    """
     if not tmux_server_running():
         notify(tray, "tmux tray", "No tmux server detected.", 3200)
         return
@@ -304,7 +304,7 @@ def restart_session(session: str, tray: Optional[QSystemTrayIcon] = None):
         return
 
     collect_session_state(session)
-    
+
     st = get_state(session)
     cwd_saved = st.get("cwd")
     cmd_saved = st.get("cmd")
@@ -314,14 +314,14 @@ def restart_session(session: str, tray: Optional[QSystemTrayIcon] = None):
 
     if cmd_saved:
         cmd_saved = _clean_tmux_string(cmd_saved)
-    
+
     shells = {"sh", "bash", "zsh", "fish", "dash", "-bash", "-zsh", "-fish"}
     use_cmd = bool(cmd_saved) and os.path.basename(cmd_saved.split()[0]) not in shells
 
     tmux_run(["set-option", "-w", "-t", session, "remain-on-exit", "on"])
 
     pid = _pane_pid(session)
-    rc, _, err, _ = tmux_run(["send-keys", "-t", session, "C-c"])
+    rc, _, _, _ = tmux_run(["send-keys", "-t", session, "C-c"])
     if rc != 0:
         notify(tray, "tmux tray", f"Failed to send Ctrl-C to '{session}'.", 4000)
         return
@@ -336,7 +336,7 @@ def restart_session(session: str, tray: Optional[QSystemTrayIcon] = None):
             try:
                 os.killpg(pgid, signal.SIGTERM)
                 time.sleep(1.0)
-                if _pids_in_pgid(pgid):
+                if _group_has_members(pgid):
                     os.killpg(pgid, signal.SIGKILL)
                     time.sleep(0.4)
             except ProcessLookupError:
@@ -344,7 +344,7 @@ def restart_session(session: str, tray: Optional[QSystemTrayIcon] = None):
 
     srv_ok = tmux_server_running()
     sess_ok = session_exists(session) if srv_ok else False
-    
+
     if not srv_ok or not sess_ok:
         ok = create_session(session, cwd_saved, (cmd_saved if use_cmd else None))
         msg = f"Session '{session}' recreated"
@@ -401,10 +401,22 @@ class TmuxTray:
 
         self.selected_session: Optional[str] = None
 
+        # evita rebuild contínuo
+        self._last_sessions_list: List[str] = []
+
+        # manter referências vivas
+        self.sel_group: Optional[QActionGroup] = None
+        self.sel_actions: Dict[str, QAction] = {}
+
+        # cache de logs p/ debouncing
+        self._last_log_text: str = ""
+        self._last_log_at: float = 0.0
+
         self.tray.activated.connect(self.on_activated)
 
         self.timer = QTimer()
-        self.timer.setInterval(2000)
+        # 10s para rebuild geral; logs têm debounce próprio
+        self.timer.setInterval(10000)
         self.timer.timeout.connect(self.refresh_all)
 
         self.refresh_all()
@@ -438,8 +450,12 @@ class TmuxTray:
         self.menu.clear()
         sessions = list_sessions()
 
+        self.sel_group = QActionGroup(self.menu)
+        self.sel_group.setExclusive(True)
+        self.sel_actions.clear()
+
         sel_menu = self.menu.addMenu("Hover session")
-        group = QActionGroup(self.menu); group.setExclusive(True)
+
         if sessions:
             if self.selected_session not in sessions:
                 self.selected_session = most_recent_session() or sessions[0]
@@ -448,7 +464,11 @@ class TmuxTray:
                 act.setCheckable(True)
                 act.setChecked(s == self.selected_session)
                 act.triggered.connect(lambda _=False, n=s: self.set_selected(n))
-                group.addAction(act); sel_menu.addAction(act)
+                # Se quiser seleção por hover, descomente:
+                act.hovered.connect(lambda n=s: self.set_selected(n))
+                self.sel_group.addAction(act)
+                sel_menu.addAction(act)
+                self.sel_actions[s] = act
         else:
             na = QAction("(none)", self.menu); na.setEnabled(False); sel_menu.addAction(na)
 
@@ -477,7 +497,10 @@ class TmuxTray:
 
     def set_selected(self, name: str):
         self.selected_session = name
-        self.refresh_tooltip_and_icon()
+        act = self.sel_actions.get(name)
+        if act and not act.isChecked():
+            act.setChecked(True)
+        self.refresh_tooltip_and_icon(force_logs=True)
 
     def kill_and_refresh(self, name: str):
         kill_session(name)
@@ -485,23 +508,41 @@ class TmuxTray:
             self.selected_session = None
         self.refresh_all()
 
-    def refresh_tooltip_and_icon(self):
+    def _tooltip_text(self, sess: Optional[str], sessions_count: int) -> str:
+        if not sess:
+            return "tmux: no active sessions"
+        if SHOW_LOGS_IN_TOOLTIP:
+            now = time.time()
+            if (now - self._last_log_at) * 1000 >= LOG_REFRESH_MS:
+                self._last_log_text = get_pane_tail(sess, LOG_LINES)
+                self._last_log_at = now
+            logs = self._last_log_text or "(no output)"
+            # primeira linha com status compacto; logs abaixo
+            return f"tmux · {sess}  |  sessions: {sessions_count}\n{logs}"
+        else:
+            return f"tmux · {sess}  |  sessions: {sessions_count}"
+
+    def refresh_tooltip_and_icon(self, force_logs: bool = False):
         sessions = list_sessions()
         if sessions:
             collect_all_sessions_state()
-
             sess = self.get_session_for_focus()
             self.tray.setIcon(self.icon_ok if sess else self.icon_err)
-            if sess:
-                self.tray.setToolTip(f"tmux · {sess}\n{get_pane_output(sess)}")
-            else:
-                    self.tray.setToolTip("tmux: no active sessions")
+            if force_logs:
+                # invalida debounce para refletir troca imediata
+                self._last_log_at = 0.0
+            self.tray.setToolTip(self._tooltip_text(sess, len(sessions)))
         else:
             self.tray.setIcon(self.icon_err)
             self.tray.setToolTip("tmux: no active sessions")
 
     def refresh_all(self):
-        self.rebuild_menu()
+        sessions = list_sessions()
+        if sessions != self._last_sessions_list:
+            self._last_sessions_list = sessions[:]
+            self.rebuild_menu()
+            # se mudou a lista, força atualizar logs
+            self._last_log_at = 0.0
         self.refresh_tooltip_and_icon()
 
     def run(self):
