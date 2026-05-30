@@ -156,3 +156,40 @@ def test_save_is_atomic_no_tmp_leftover(toml_path):
     save_entries([make_entry("a")], toml_path)
     leftovers = list(toml_path.parent.glob("*.tmp"))
     assert leftovers == []
+
+
+def test_entry_command_roundtrip(toml_path):
+    e = make_entry("py", command="python3 /opt/app/start.py --port 8080")
+    save_entries([e], toml_path)
+    loaded = load_entries(toml_path)
+    assert loaded[0].command == "python3 /opt/app/start.py --port 8080"
+
+
+def test_entry_without_command_omits_field(toml_path):
+    e = make_entry("plain", command=None)
+    save_entries([e], toml_path)
+    body = toml_path.read_text()
+    assert "command =" not in body
+    loaded = load_entries(toml_path)
+    assert loaded[0].command is None
+
+
+def test_load_legacy_entry_without_command_field(toml_path):
+    """Entries written before the command field existed must still load."""
+    toml_path.write_text(
+        '[[entry]]\nslug = "legacy"\nname = "Legacy"\npath = "/x/run.sh"\n'
+        'mode = "tmux-wrapped"\nsession_name = "legacy"\nenabled = true\n'
+    )
+    entries = load_entries(toml_path)
+    assert len(entries) == 1
+    assert entries[0].command is None
+
+
+def test_update_entry_can_set_and_clear_command(toml_path):
+    save_entries([make_entry("a", command=None)], toml_path)
+    updated = update_entry("a", path=toml_path, command="python3 main.py")
+    assert updated is not None and updated.command == "python3 main.py"
+    cleared = update_entry("a", path=toml_path, command=None)
+    assert cleared is not None and cleared.command is None
+    loaded = load_entries(toml_path)
+    assert loaded[0].command is None

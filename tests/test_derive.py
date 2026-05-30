@@ -5,7 +5,12 @@ Pure functions live in startup/naming.py so they can be tested without Qt.
 
 from pathlib import Path
 
-from tmux_tray.startup.naming import derive_name_and_id, is_valid_slug, slugify
+from tmux_tray.startup.naming import (
+    derive_name_and_id,
+    is_valid_slug,
+    slugify,
+    suggest_command,
+)
 
 
 def test_generic_stem_uses_parent_dir():
@@ -85,3 +90,35 @@ def test_is_valid_slug_rejects_uppercase_or_spaces():
     assert is_valid_slug("my app") is False
     assert is_valid_slug("-leading") is False
     assert is_valid_slug("") is False
+
+
+def test_suggest_command_python():
+    assert suggest_command(Path("/srv/app/start.py")) == "python3 /srv/app/start.py"
+
+
+def test_suggest_command_node():
+    assert suggest_command(Path("/srv/app/index.js")) == "node /srv/app/index.js"
+    assert suggest_command(Path("/srv/app/index.mjs")) == "node /srv/app/index.mjs"
+    assert suggest_command(Path("/srv/app/index.cjs")) == "node /srv/app/index.cjs"
+
+
+def test_suggest_command_ruby_perl_php():
+    assert suggest_command(Path("/x/foo.rb")) == "ruby /x/foo.rb"
+    assert suggest_command(Path("/x/foo.pl")) == "perl /x/foo.pl"
+    assert suggest_command(Path("/x/foo.php")) == "php /x/foo.php"
+
+
+def test_suggest_command_shell_returns_none():
+    assert suggest_command(Path("/x/run.sh")) is None
+
+
+def test_suggest_command_binary_returns_none():
+    assert suggest_command(Path("/usr/bin/firefox")) is None
+
+
+def test_suggest_command_unknown_extension_returns_none():
+    assert suggest_command(Path("/x/data.txt")) is None
+
+
+def test_suggest_command_uppercase_extension_still_matches():
+    assert suggest_command(Path("/x/START.PY")) == "python3 /x/START.PY"

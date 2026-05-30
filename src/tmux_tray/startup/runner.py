@@ -8,6 +8,7 @@ Conservative semantics: never duplicates a running process. If a matching
 session or PID is already alive, prints a warning and exits 0.
 """
 
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -36,10 +37,32 @@ def detect_running(entry: Entry) -> Optional[RunningInfo]:
     return None
 
 
+def build_self_managed_argv(entry: Entry) -> list[str]:
+    """Compute the argv used by self-managed mode.
+
+    Uses the user-supplied ``command`` if set (shell-quoted, split via
+    ``shlex``), otherwise runs ``path`` directly.
+    """
+    if entry.command:
+        return shlex.split(entry.command)
+    return [entry.path]
+
+
+def build_tmux_wrapped_command(entry: Entry) -> str:
+    """Compute the command string passed to ``tmux new-session``.
+
+    tmux executes this via /bin/sh, so a shell command string is the right
+    shape. We pass the user's command verbatim if set, otherwise the
+    canonical script path.
+    """
+    return entry.command if entry.command else entry.path
+
+
 def _exec_self_managed(entry: Entry) -> int:
+    argv = build_self_managed_argv(entry)
     try:
         subprocess.Popen(
-            [entry.path],
+            argv,
             cwd=entry.cwd or None,
             start_new_session=True,
             stdin=subprocess.DEVNULL,
@@ -48,7 +71,7 @@ def _exec_self_managed(entry: Entry) -> int:
         )
         return 0
     except OSError as e:
-        print(f"tmux-tray: failed to spawn '{entry.path}': {e}", file=sys.stderr)
+        print(f"tmux-tray: failed to spawn {argv!r}: {e}", file=sys.stderr)
         return 1
 
 
@@ -56,7 +79,7 @@ def _exec_tmux_wrapped(entry: Entry) -> int:
     args = ["new-session", "-d", "-s", entry.session_name]
     if entry.cwd:
         args += ["-c", entry.cwd]
-    args.append(entry.path)
+    args.append(build_tmux_wrapped_command(entry))
     rc, _, err, _ = tmux_run(args)
     if rc != 0:
         print(f"tmux-tray: tmux new-session failed for '{entry.slug}': {err}", file=sys.stderr)

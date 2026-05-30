@@ -13,7 +13,9 @@ from tmux_tray.config import ensure_config_dir, startup_toml_path
 
 Mode = Literal["tmux-wrapped", "self-managed"]
 _VALID_MODES = ("tmux-wrapped", "self-managed")
-_FIELD_ORDER = ("slug", "name", "path", "cwd", "mode", "session_name", "enabled")
+_FIELD_ORDER = (
+    "slug", "name", "path", "command", "cwd", "mode", "session_name", "enabled",
+)
 
 
 @dataclass
@@ -25,6 +27,14 @@ class Entry:
     mode: Mode = "tmux-wrapped"
     cwd: Optional[str] = None
     enabled: bool = True
+    command: Optional[str] = None
+    """Optional command-line override.
+
+    If set, the runner executes this command instead of running ``path``
+    directly. Lets users invoke interpreters (e.g. ``python3 start.py``)
+    or pass extra arguments. ``path`` is still the canonical script
+    location used for detection.
+    """
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Entry":
@@ -39,6 +49,7 @@ class Entry:
             mode=mode,
             cwd=d.get("cwd"),
             enabled=bool(d.get("enabled", True)),
+            command=d.get("command"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -52,6 +63,8 @@ class Entry:
         }
         if self.cwd:
             d["cwd"] = self.cwd
+        if self.command:
+            d["command"] = self.command
         return d
 
 

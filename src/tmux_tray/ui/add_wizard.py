@@ -31,7 +31,12 @@ from tmux_tray.startup.detection import (
     is_self_tmux,
     scan_xdg_autostart,
 )
-from tmux_tray.startup.naming import derive_name_and_id, is_valid_slug, slugify
+from tmux_tray.startup.naming import (
+    derive_name_and_id,
+    is_valid_slug,
+    slugify,
+    suggest_command,
+)
 from tmux_tray.startup.registry import Entry, load_entries
 from tmux_tray.startup.xdg import desktop_file_path
 
@@ -46,6 +51,7 @@ class AddWizardDialog(QDialog):
 
         self._slug_is_auto = existing is None
         self._session_is_auto = existing is None
+        self._command_is_auto = existing is None
         self._last_path_seen = ""
 
         layout = QVBoxLayout(self)
@@ -81,6 +87,14 @@ class AddWizardDialog(QDialog):
         )
         self.cwd_edit = QLineEdit()
         self.cwd_edit.setPlaceholderText("optional — defaults to script's directory")
+        self.command_edit = QLineEdit()
+        self.command_edit.setPlaceholderText("optional — runs the script directly if empty")
+        self.command_edit.setToolTip(
+            "Override the command used to launch the script.\n"
+            "Leave empty to execute the script directly (needs shebang + chmod +x).\n"
+            "Use this for interpreters: e.g. 'python3 /path/start.py', 'node app.js'.\n"
+            "Auto-filled when the script's extension implies an interpreter."
+        )
         self.session_edit = QLineEdit()
         self.session_edit.setToolTip("The tmux session name. Defaults to ID.")
         self.mode_combo = QComboBox()
@@ -91,6 +105,7 @@ class AddWizardDialog(QDialog):
         form.addRow("Name *:", self.name_edit)
         form.addRow("ID *:", self.slug_edit)
         form.addRow("Working directory:", self.cwd_edit)
+        form.addRow("Command:", self.command_edit)
         form.addRow("Tmux session name *:", self.session_edit)
         form.addRow("Mode *:", self.mode_combo)
         form.addRow("", self.enabled_check)
@@ -109,6 +124,7 @@ class AddWizardDialog(QDialog):
         self.name_edit.textEdited.connect(self._on_name_edited)
         self.slug_edit.textEdited.connect(self._on_slug_edited)
         self.session_edit.textEdited.connect(self._on_session_edited)
+        self.command_edit.textEdited.connect(self._on_command_edited)
 
         if existing is not None:
             self._fill_from_entry(existing)
@@ -121,6 +137,8 @@ class AddWizardDialog(QDialog):
         self.slug_edit.setEnabled(False)
         if e.cwd:
             self.cwd_edit.setText(e.cwd)
+        if e.command:
+            self.command_edit.setText(e.command)
         self.session_edit.setText(e.session_name)
         idx = self.mode_combo.findText(e.mode)
         if idx >= 0:
@@ -170,6 +188,10 @@ class AddWizardDialog(QDialog):
             self.session_edit.setText(slug)
         if not self.cwd_edit.text():
             self.cwd_edit.setText(str(p.parent))
+        if self._command_is_auto and not self.command_edit.text():
+            suggested = suggest_command(p)
+            if suggested:
+                self.command_edit.setText(suggested)
 
     def _on_name_edited(self, new_name: str) -> None:
         if self._slug_is_auto:
@@ -185,6 +207,9 @@ class AddWizardDialog(QDialog):
 
     def _on_session_edited(self, _text: str) -> None:
         self._session_is_auto = False
+
+    def _on_command_edited(self, _text: str) -> None:
+        self._command_is_auto = False
 
     def _run_detections(self, path: Path) -> None:
         if not path.exists():
@@ -274,6 +299,8 @@ class AddWizardDialog(QDialog):
         session_name = self.session_edit.text().strip() or slug
         cwd_text = self.cwd_edit.text().strip()
         cwd = cwd_text if cwd_text else None
+        command_text = self.command_edit.text().strip()
+        command = command_text if command_text else None
         mode = self.mode_combo.currentText()
         enabled = self.enabled_check.isChecked()
 
@@ -285,5 +312,6 @@ class AddWizardDialog(QDialog):
             mode=mode,  # type: ignore[arg-type]
             cwd=cwd,
             enabled=enabled,
+            command=command,
         )
         self.accept()

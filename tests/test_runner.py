@@ -1,8 +1,13 @@
 from tmux_tray.startup.registry import Entry
-from tmux_tray.startup.runner import RunningInfo, start_by_slug
+from tmux_tray.startup.runner import (
+    RunningInfo,
+    build_self_managed_argv,
+    build_tmux_wrapped_command,
+    start_by_slug,
+)
 
 
-def make_entry(slug="james", mode="self-managed", enabled=True) -> Entry:
+def make_entry(slug="james", mode="self-managed", enabled=True, command=None) -> Entry:
     return Entry(
         slug=slug,
         name=slug.title(),
@@ -11,6 +16,7 @@ def make_entry(slug="james", mode="self-managed", enabled=True) -> Entry:
         mode=mode,  # type: ignore[arg-type]
         cwd=f"/home/user/{slug}",
         enabled=enabled,
+        command=command,
     )
 
 
@@ -79,3 +85,32 @@ def test_start_by_slug_propagates_executor_exit_code():
         executor=lambda e: 1,
     )
     assert rc == 1
+
+
+def test_build_self_managed_argv_without_command_uses_path():
+    entry = make_entry("a", command=None)
+    assert build_self_managed_argv(entry) == [entry.path]
+
+
+def test_build_self_managed_argv_uses_command_when_set():
+    entry = make_entry("a", command="python3 /opt/start.py --port 8080")
+    assert build_self_managed_argv(entry) == [
+        "python3", "/opt/start.py", "--port", "8080",
+    ]
+
+
+def test_build_self_managed_argv_respects_shell_quoting():
+    entry = make_entry("a", command="python3 /opt/start.py 'arg with space'")
+    assert build_self_managed_argv(entry) == [
+        "python3", "/opt/start.py", "arg with space",
+    ]
+
+
+def test_build_tmux_wrapped_command_without_command_uses_path():
+    entry = make_entry("a", command=None)
+    assert build_tmux_wrapped_command(entry) == entry.path
+
+
+def test_build_tmux_wrapped_command_uses_command_when_set():
+    entry = make_entry("a", command="python3 /opt/start.py")
+    assert build_tmux_wrapped_command(entry) == "python3 /opt/start.py"

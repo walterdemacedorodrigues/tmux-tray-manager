@@ -157,6 +157,7 @@ class StartupDialog(QDialog):
                 name=updated.name,
                 path=updated.path,
                 cwd=updated.cwd,
+                command=updated.command,
                 mode=updated.mode,
                 session_name=updated.session_name,
                 enabled=updated.enabled,
