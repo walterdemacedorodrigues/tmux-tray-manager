@@ -17,7 +17,7 @@ from tmux_tray.tmux.sessions import (
     most_recent_session,
     open_blank_terminal,
 )
-from tmux_tray.ui.resources import app_icon
+from tmux_tray.ui.resources import app_icon, system_desktop_file_installed
 
 log = logging.getLogger("tmux-tray")
 
@@ -30,7 +30,14 @@ class TmuxTray:
         self.app = QApplication(sys.argv)
         self.app.setApplicationName("tmux-tray")
         self.app.setApplicationDisplayName("Tmux Tray")
-        self.app.setDesktopFileName("tmux-tray")
+        if system_desktop_file_installed():
+            # Without an installed tmux-tray.desktop the xdg-desktop-portal
+            # registration emits a noisy "App info not found" warning. Skip
+            # in dev mode (uv run); enable once the system package is installed.
+            self.app.setDesktopFileName("tmux-tray")
+            log.debug("setDesktopFileName('tmux-tray') applied (system .desktop found)")
+        else:
+            log.debug("skipping setDesktopFileName: no tmux-tray.desktop in XDG dirs")
         self.app.setWindowIcon(app_icon())
         self.app.setQuitOnLastWindowClosed(False)
 
