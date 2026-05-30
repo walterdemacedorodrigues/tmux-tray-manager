@@ -3,6 +3,7 @@ import subprocess
 from typing import List, Optional, Tuple
 
 TMUX_SOCKET: Optional[str] = None
+TMUX_CMD_TIMEOUT_SEC = 2.0
 
 
 def _parse_tmux_env(val: str) -> Optional[str]:
@@ -47,13 +48,25 @@ def _tmux_cmd_list(sock: Optional[str], args: List[str]) -> List[str]:
 
 
 def tmux_exec(args: List[str]) -> Tuple[int, str, str, Optional[str]]:
-    """Try multiple sockets; return (rc, stdout, stderr, socket_used)."""
+    """Try multiple sockets; return (rc, stdout, stderr, socket_used).
+
+    Each candidate is given TMUX_CMD_TIMEOUT_SEC before we move on, so a
+    stuck tmux server or stale socket can never block the Qt event loop.
+    """
     global TMUX_SOCKET
     last = (1, "", "no tmux socket responded", None)
     for sock in tmux_candidates():
         cmd = _tmux_cmd_list(sock, args)
         try:
-            p = subprocess.run(cmd, capture_output=True, text=True)
+            p = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=TMUX_CMD_TIMEOUT_SEC,
+            )
+        except subprocess.TimeoutExpired:
+            last = (1, "", f"timeout after {TMUX_CMD_TIMEOUT_SEC}s", sock)
+            continue
         except Exception as e:
             last = (1, "", str(e), sock)
             continue

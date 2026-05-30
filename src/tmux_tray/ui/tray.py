@@ -80,9 +80,9 @@ class TmuxTray:
         self.menu.clear()
         sessions = list_sessions()
 
-        startup_action = QAction("Startup Tmux…", self.menu)
-        startup_action.triggered.connect(self.open_startup_dialog)
-        self.menu.addAction(startup_action)
+        self._startup_action = QAction("Startup Tmux...", self.menu)
+        self._startup_action.triggered.connect(lambda _=False: self.open_startup_dialog())
+        self.menu.addAction(self._startup_action)
         self.menu.addSeparator()
 
         self.sel_group = QActionGroup(self.menu)
