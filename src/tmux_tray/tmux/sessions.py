@@ -1,6 +1,5 @@
 import os
 import shlex
-import subprocess
 from typing import List, Optional
 
 from tmux_tray.tmux.socket import get_active_socket, tmux_out, tmux_run

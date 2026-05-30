@@ -7,7 +7,7 @@ name = "tmux-tray"
 version = "0.2.0"
 description = "System tray monitor for tmux sessions (KDE/Wayland)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
     { name = "Walter Rodrigues" },
@@ -46,3 +46,11 @@ dev = [
     "ruff>=0.6",
     "pytest>=8.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
