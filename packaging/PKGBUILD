@@ -23,8 +23,11 @@ options=('!debug')
 build() {
   rm -rf "$srcdir/buildtree"
   mkdir -p "$srcdir/buildtree"
-  # Glob excludes dotfiles, so .git/ and .venv/ don't leak into the build tree.
-  cp -r "$startdir/.."/* "$srcdir/buildtree/"
+  cd "$startdir/.."
+  # Copy only the files needed for the wheel build. We must NOT copy
+  # 'packaging/' because $srcdir lives inside it (packaging/src/buildtree),
+  # so `cp -r packaging/ ...` would recurse into the destination.
+  cp -r LICENSE README.md pyproject.toml src tests "$srcdir/buildtree/"
   cd "$srcdir/buildtree"
   python -m build --wheel --no-isolation
 }
