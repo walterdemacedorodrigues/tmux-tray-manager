@@ -25,6 +25,8 @@ class TmuxTray:
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
 
+        self._reconcile_xdg_quietly()
+
         self.icon_ok = QIcon.fromTheme("emblem-success")
         self.icon_err = QIcon.fromTheme("emblem-error")
         self.icon_term = QIcon.fromTheme("utilities-terminal")
@@ -77,6 +79,11 @@ class TmuxTray:
     def rebuild_menu(self) -> None:
         self.menu.clear()
         sessions = list_sessions()
+
+        startup_action = QAction("Startup Tmux…", self.menu)
+        startup_action.triggered.connect(self.open_startup_dialog)
+        self.menu.addAction(startup_action)
+        self.menu.addSeparator()
 
         self.sel_group = QActionGroup(self.menu)
         self.sel_group.setExclusive(True)
@@ -169,6 +176,18 @@ class TmuxTray:
             self.rebuild_menu()
             self._last_log_at = 0.0
         self.refresh_tooltip_and_icon()
+
+    def open_startup_dialog(self) -> None:
+        from tmux_tray.ui.startup_dialog import open_startup_dialog
+        open_startup_dialog()
+        self.refresh_all()
+
+    def _reconcile_xdg_quietly(self) -> None:
+        try:
+            from tmux_tray.startup.sync import reconcile
+            reconcile()
+        except Exception:
+            pass
 
     def run(self) -> None:
         sys.exit(self.app.exec())
