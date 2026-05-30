@@ -46,7 +46,8 @@ class TmuxTray:
 
         self.selected_session: Optional[str] = None
 
-        self._last_sessions_list: List[str] = []
+        # None = menu has never been built; any list comparison forces a rebuild.
+        self._last_sessions_list: Optional[List[str]] = None
 
         self.sel_group: Optional[QActionGroup] = None
         self.sel_actions: Dict[str, QAction] = {}
