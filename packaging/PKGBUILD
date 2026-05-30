@@ -1,4 +1,12 @@
 # Maintainer: Walter Rodrigues <walterdemacedorodrigues@gmail.com>
+#
+# Local-build PKGBUILD: assembles the package from the working tree this
+# file lives in. No tag, no GitHub download — useful for installing your
+# own branch / unreleased changes.
+#
+# Run from the repo:
+#     cd packaging && makepkg -si
+
 pkgname=tmux-tray
 pkgver=0.2.0
 pkgrel=1
@@ -8,16 +16,21 @@ url="https://github.com/walterdemacedorodrigues/tmux-tray-manager"
 license=('MIT')
 depends=('python>=3.11' 'tmux' 'pyside6')
 makedepends=('python-build' 'python-installer' 'python-hatchling' 'python-wheel')
-source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+source=()
+sha256sums=()
+options=('!debug')
 
 build() {
-  cd "tmux-tray-manager-$pkgver"
+  rm -rf "$srcdir/buildtree"
+  mkdir -p "$srcdir/buildtree"
+  # Glob excludes dotfiles, so .git/ and .venv/ don't leak into the build tree.
+  cp -r "$startdir/.."/* "$srcdir/buildtree/"
+  cd "$srcdir/buildtree"
   python -m build --wheel --no-isolation
 }
 
 package() {
-  cd "tmux-tray-manager-$pkgver"
+  cd "$srcdir/buildtree"
   python -m installer --destdir="$pkgdir" dist/*.whl
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
