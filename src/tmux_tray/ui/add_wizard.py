@@ -6,7 +6,6 @@ Runs the 3 detections on the chosen script:
   - find_running_pids  → informs which PIDs currently match
 """
 
-import re
 from pathlib import Path
 from typing import Optional
 
@@ -32,20 +31,9 @@ from tmux_tray.startup.detection import (
     is_self_tmux,
     scan_xdg_autostart,
 )
+from tmux_tray.startup.naming import derive_name_and_id, is_valid_slug, slugify
 from tmux_tray.startup.registry import Entry, load_entries
 from tmux_tray.startup.xdg import desktop_file_path
-
-_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-
-
-def slugify(text: str) -> str:
-    s = text.lower()
-    s = re.sub(r"[^a-z0-9_-]+", "-", s).strip("-")
-    if not s:
-        return "entry"
-    if not s[0].isalnum():
-        s = "e-" + s
-    return s
 
 
 class AddWizardDialog(QDialog):
@@ -54,11 +42,15 @@ class AddWizardDialog(QDialog):
         self.existing = existing
         self.entry: Optional[Entry] = None
         self.setWindowTitle("Edit Startup Entry" if existing else "Add Startup Entry")
-        self.resize(640, 520)
+        self.resize(680, 560)
+
+        self._slug_is_auto = existing is None
+        self._session_is_auto = existing is None
+        self._last_path_seen = ""
 
         layout = QVBoxLayout(self)
 
-        path_group = QGroupBox("Script")
+        path_group = QGroupBox("Script *")
         path_layout = QHBoxLayout(path_group)
         self.path_edit = QLineEdit()
         self.path_edit.setPlaceholderText("/path/to/script.sh")
@@ -81,32 +73,49 @@ class AddWizardDialog(QDialog):
         form = QFormLayout(form_group)
         self.name_edit = QLineEdit()
         self.slug_edit = QLineEdit()
+        self.slug_edit.setToolTip(
+            "Internal identifier — lowercase, digits, '-' or '_'.\n"
+            "Used in the tmux session name, in the autostart .desktop\n"
+            "filename, and as a stable key in tmux-tray's config.\n"
+            "Auto-generated from Name; edit only if you need a custom one."
+        )
         self.cwd_edit = QLineEdit()
-        self.cwd_edit.setPlaceholderText("optional — defaults to script directory")
+        self.cwd_edit.setPlaceholderText("optional — defaults to script's directory")
         self.session_edit = QLineEdit()
+        self.session_edit.setToolTip("The tmux session name. Defaults to ID.")
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["tmux-wrapped", "self-managed"])
         self.enabled_check = QCheckBox("Enable autostart at login")
         self.enabled_check.setChecked(True)
 
-        form.addRow("Name:", self.name_edit)
-        form.addRow("Slug:", self.slug_edit)
+        form.addRow("Name *:", self.name_edit)
+        form.addRow("ID *:", self.slug_edit)
         form.addRow("Working directory:", self.cwd_edit)
-        form.addRow("Tmux session name:", self.session_edit)
-        form.addRow("Mode:", self.mode_combo)
+        form.addRow("Tmux session name *:", self.session_edit)
+        form.addRow("Mode *:", self.mode_combo)
         form.addRow("", self.enabled_check)
         layout.addWidget(form_group)
+
+        required_note = QLabel("<small><i>Fields marked with * are required.</i></small>")
+        required_note.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(required_note)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+        self.path_edit.editingFinished.connect(self._on_path_finished)
+        self.name_edit.textEdited.connect(self._on_name_edited)
+        self.slug_edit.textEdited.connect(self._on_slug_edited)
+        self.session_edit.textEdited.connect(self._on_session_edited)
+
         if existing is not None:
             self._fill_from_entry(existing)
 
     def _fill_from_entry(self, e: Entry) -> None:
         self.path_edit.setText(e.path)
+        self._last_path_seen = e.path
         self.name_edit.setText(e.name)
         self.slug_edit.setText(e.slug)
         self.slug_edit.setEnabled(False)
@@ -129,14 +138,53 @@ class AddWizardDialog(QDialog):
         if not path:
             return
         self.path_edit.setText(path)
-        p = Path(path)
+        self._last_path_seen = path
+        self._apply_path_change(path)
+
+    def _on_path_finished(self) -> None:
+        text = self.path_edit.text().strip()
+        if text == self._last_path_seen:
+            return
+        self._last_path_seen = text
+        if text:
+            self._apply_path_change(text)
+
+    def _apply_path_change(self, path_str: str) -> None:
+        p = Path(path_str)
         if self.existing is None:
-            stem = p.stem
-            self.name_edit.setText(stem.replace("_", " ").replace("-", " ").title())
-            self.slug_edit.setText(slugify(stem))
+            self._auto_fill_from_path(p)
+        if p.exists():
+            self._run_detections(p)
+        else:
+            self.detection_label.setText(
+                f"<span style='color:#c0392b'>Path does not exist: {path_str}</span>"
+            )
+
+    def _auto_fill_from_path(self, p: Path) -> None:
+        pretty_name, slug = derive_name_and_id(p)
+        if not self.name_edit.text():
+            self.name_edit.setText(pretty_name)
+        if self._slug_is_auto and not self.slug_edit.text():
+            self.slug_edit.setText(slug)
+        if self._session_is_auto and not self.session_edit.text():
+            self.session_edit.setText(slug)
+        if not self.cwd_edit.text():
             self.cwd_edit.setText(str(p.parent))
-            self.session_edit.setText(slugify(stem))
-        self._run_detections(p)
+
+    def _on_name_edited(self, new_name: str) -> None:
+        if self._slug_is_auto:
+            derived = slugify(new_name) if new_name else ""
+            self.slug_edit.setText(derived)
+            if self._session_is_auto:
+                self.session_edit.setText(derived)
+
+    def _on_slug_edited(self, _text: str) -> None:
+        self._slug_is_auto = False
+        if self._session_is_auto:
+            self.session_edit.setText(self.slug_edit.text())
+
+    def _on_session_edited(self, _text: str) -> None:
+        self._session_is_auto = False
 
     def _run_detections(self, path: Path) -> None:
         if not path.exists():
@@ -204,11 +252,11 @@ class AddWizardDialog(QDialog):
             return
 
         slug = self.slug_edit.text().strip()
-        if not _SLUG_RE.match(slug):
+        if not is_valid_slug(slug):
             QMessageBox.warning(
                 self,
-                "Invalid slug",
-                "Slug must use only lowercase letters, digits, '-' and '_', "
+                "Invalid ID",
+                "ID must use only lowercase letters, digits, '-' and '_', "
                 "starting with a letter or digit.",
             )
             return
@@ -218,8 +266,8 @@ class AddWizardDialog(QDialog):
             if slug in existing_slugs:
                 QMessageBox.warning(
                     self,
-                    "Slug exists",
-                    f"An entry with slug '{slug}' already exists.",
+                    "ID already exists",
+                    f"An entry with ID '{slug}' already exists.",
                 )
                 return
 
