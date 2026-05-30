@@ -1,3 +1,4 @@
+import logging
 import sys
 import time
 from typing import Dict, List, Optional
@@ -17,24 +18,30 @@ from tmux_tray.tmux.sessions import (
     open_blank_terminal,
 )
 
+log = logging.getLogger("tmux-tray")
+
 SHOW_LOGS_IN_TOOLTIP = True
 
 
 class TmuxTray:
     def __init__(self) -> None:
+        log.debug("TmuxTray.__init__: creating QApplication")
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
 
         self._reconcile_xdg_quietly()
 
+        log.debug("TmuxTray.__init__: loading theme icons")
         self.icon_ok = QIcon.fromTheme("emblem-success")
         self.icon_err = QIcon.fromTheme("emblem-error")
         self.icon_term = QIcon.fromTheme("utilities-terminal")
 
+        log.debug("TmuxTray.__init__: creating tray icon and menu")
         self.tray = QSystemTrayIcon(self.icon_err)
         self.tray.setToolTip("tmux: no active sessions")
 
         self.menu = QMenu()
+        self.menu.aboutToShow.connect(lambda: log.debug("menu aboutToShow"))
         self.tray.setContextMenu(self.menu)
 
         self.selected_session: Optional[str] = None
@@ -53,9 +60,12 @@ class TmuxTray:
         self.timer.setInterval(10000)
         self.timer.timeout.connect(self.refresh_all)
 
+        log.debug("TmuxTray.__init__: first refresh_all")
         self.refresh_all()
+        log.debug("TmuxTray.__init__: tray.show")
         self.tray.show()
         self.timer.start()
+        log.debug("TmuxTray.__init__: ready (timer started)")
 
     def on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.DoubleClick:
@@ -77,8 +87,12 @@ class TmuxTray:
         return mr
 
     def rebuild_menu(self) -> None:
+        t0 = time.perf_counter()
+        log.debug("rebuild_menu: start")
         self.menu.clear()
         sessions = list_sessions()
+        log.debug("rebuild_menu: list_sessions returned %d sessions in %.3fs",
+                  len(sessions), time.perf_counter() - t0)
 
         self._startup_action = QAction("Startup Tmux...", self.menu)
         self._startup_action.triggered.connect(lambda _=False: self.open_startup_dialog())
@@ -131,6 +145,9 @@ class TmuxTray:
         quit_action.triggered.connect(self.app.quit)
         self.menu.addAction(quit_action)
 
+        log.debug("rebuild_menu: done, %d top-level actions, %d sessions",
+                  len(self.menu.actions()), len(sessions))
+
     def set_selected(self, name: str) -> None:
         self.selected_session = name
         act = self.sel_actions.get(name)
@@ -170,12 +187,16 @@ class TmuxTray:
             self.tray.setToolTip("tmux: no active sessions")
 
     def refresh_all(self) -> None:
+        t0 = time.perf_counter()
+        log.debug("refresh_all: start")
         sessions = list_sessions()
+        log.debug("refresh_all: list_sessions %.3fs", time.perf_counter() - t0)
         if sessions != self._last_sessions_list:
             self._last_sessions_list = sessions[:]
             self.rebuild_menu()
             self._last_log_at = 0.0
         self.refresh_tooltip_and_icon()
+        log.debug("refresh_all: done in %.3fs", time.perf_counter() - t0)
 
     def open_startup_dialog(self) -> None:
         from tmux_tray.ui.startup_dialog import open_startup_dialog
@@ -183,11 +204,21 @@ class TmuxTray:
         self.refresh_all()
 
     def _reconcile_xdg_quietly(self) -> None:
+        t0 = time.perf_counter()
+        log.debug("reconcile: start")
         try:
             from tmux_tray.startup.sync import reconcile
-            reconcile()
-        except Exception:
-            pass
+            entries, report = reconcile()
+            log.debug(
+                "reconcile: done in %.3fs (entries=%d, flipped=%s, regenerated=%s, orphans=%s)",
+                time.perf_counter() - t0,
+                len(entries),
+                report.flipped_in_toml,
+                report.regenerated_desktops,
+                report.removed_orphans,
+            )
+        except Exception as e:
+            log.warning("reconcile failed (%.3fs): %s", time.perf_counter() - t0, e, exc_info=True)
 
     def run(self) -> None:
         sys.exit(self.app.exec())
