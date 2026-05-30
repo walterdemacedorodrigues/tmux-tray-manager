@@ -28,36 +28,29 @@ Tmux Tray is a lightweight Python + Qt6 application that sits quietly in your sy
 
 ---
 
-## ⚙️ Installation Guide
+## ⚙️ Installation
 
-### 1️⃣ Clone or Download
+### Native packages (recommended)
 
-```bash
-git clone https://github.com/yourusername/tmux-tray.git
-cd tmux-tray
-```
+Pre-built packages for **Arch (PKGBUILD)**, **Debian/Ubuntu (.deb)** and **Fedora/openSUSE (.rpm)** are published on the [Releases page](https://github.com/walterdemacedorodrigues/tmux-tray-manager/releases).
 
-### 2️⃣ Run the Installer
+### From source (dev)
 
-```bash
-chmod +x install_tmux_tray.sh
-./install_tmux_tray.sh
-```
-
-This script:
-
-* Installs **tmux**, **Python**, and **PySide6** automatically.
-* Copies the app to `~/.local/bin/tmux-tray.py`.
-* Creates autostart and desktop launcher entries.
-* Detects your terminal emulator (Konsole, Kitty, Alacritty, etc).
-
-### 3️⃣ Start the App
+Requires [`uv`](https://docs.astral.sh/uv/):
 
 ```bash
-~/.local/bin/tmux-tray.py &
+git clone https://github.com/walterdemacedorodrigues/tmux-tray-manager.git
+cd tmux-tray-manager
+uv sync
+uv run tmux-tray
 ```
 
-Or simply log out and log back in — it’ll start automatically.
+Or with plain `pip`:
+
+```bash
+pip install --user .
+tmux-tray &
+```
 
 ---
 
@@ -78,38 +71,10 @@ Or simply log out and log back in — it’ll start automatically.
 
 ---
 
-## 🧰 Manual Startup Configuration
-
-If you ever need to recreate the autostart file manually:
-
-`~/.config/autostart/tmux-tray.desktop`
-
-```ini
-[Desktop Entry]
-Type=Application
-Name=Tmux Tray
-Exec=/home/blackbloc/.local/bin/tmux-tray.py
-Icon=utilities-terminal
-Terminal=false
-X-GNOME-Autostart-enabled=true
-```
-
----
-
 ## 💡 Tips
 
 * **GNOME Users**: install the *AppIndicator* extension if the tray icon doesn’t show.
-* **Custom Terminal**: modify the launcher in `~/.local/bin/tmux-tray.py` if you want a different terminal.
-* **Logs**: to enable logging, edit the autostart file:
-
-  ```ini
-  Exec=/home/blackbloc/.local/bin/tmux-tray.py >> ~/.local/share/tmux-tray.log 2>&1
-  ```
-* **AppImage build**: you can build a self-contained AppImage with:
-
-  ```bash
-  ./install_tmux_tray.sh --appimage
-  ```
+* **Logs**: redirect stdout/stderr in your autostart entry to `~/.local/share/tmux-tray.log` for diagnostics.
 
 ---
 

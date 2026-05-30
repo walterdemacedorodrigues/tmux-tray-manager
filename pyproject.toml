@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tmux-tray"
+version = "0.2.0"
+description = "System tray monitor for tmux sessions (KDE/Wayland)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Walter Rodrigues" },
+]
+keywords = ["tmux", "tray", "kde", "qt", "wayland"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: System :: Monitoring",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "PySide6>=6.5",
+]
+
+[project.scripts]
+tmux-tray = "tmux_tray.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/walterdemacedorodrigues/tmux-tray-manager"
+Repository = "https://github.com/walterdemacedorodrigues/tmux-tray-manager"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tmux_tray"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"assets/icons/tmux-tray.svg" = "share/icons/hicolor/scalable/apps/tmux-tray.svg"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "pytest>=8.0",
+]
