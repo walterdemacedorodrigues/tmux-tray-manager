@@ -17,6 +17,7 @@ from tmux_tray.tmux.sessions import (
     most_recent_session,
     open_blank_terminal,
 )
+from tmux_tray.ui.resources import app_icon
 
 log = logging.getLogger("tmux-tray")
 
@@ -27,6 +28,10 @@ class TmuxTray:
     def __init__(self) -> None:
         log.debug("TmuxTray.__init__: creating QApplication")
         self.app = QApplication(sys.argv)
+        self.app.setApplicationName("tmux-tray")
+        self.app.setApplicationDisplayName("Tmux Tray")
+        self.app.setDesktopFileName("tmux-tray")
+        self.app.setWindowIcon(app_icon())
         self.app.setQuitOnLastWindowClosed(False)
 
         self._reconcile_xdg_quietly()

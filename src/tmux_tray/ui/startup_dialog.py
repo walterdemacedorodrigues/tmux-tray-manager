@@ -33,12 +33,14 @@ from tmux_tray.startup.sync import ensure_desktop_for_entry, reconcile
 from tmux_tray.startup.xdg import remove_desktop_file
 from tmux_tray.tmux.sessions import kill_session
 from tmux_tray.ui.add_wizard import AddWizardDialog
+from tmux_tray.ui.resources import app_icon
 
 
 class StartupDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Startup Tmux")
+        self.setWindowIcon(app_icon())
         self.resize(900, 480)
 
         root = QVBoxLayout(self)

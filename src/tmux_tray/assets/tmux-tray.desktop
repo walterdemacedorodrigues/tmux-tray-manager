@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Tmux Tray
+GenericName=Tmux Session Manager
+Comment=System tray monitor for tmux sessions
+Exec=tmux-tray
+Icon=tmux-tray
+Terminal=false
+Categories=Utility;System;
+StartupNotify=false
+StartupWMClass=tmux-tray
+Keywords=tmux;session;manager;tray;

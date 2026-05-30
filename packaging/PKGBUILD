@@ -1,0 +1,23 @@
+# Maintainer: Walter Rodrigues <walterdemacedorodrigues@gmail.com>
+pkgname=tmux-tray
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="System tray monitor for tmux sessions (KDE/Wayland)"
+arch=('any')
+url="https://github.com/walterdemacedorodrigues/tmux-tray-manager"
+license=('MIT')
+depends=('python>=3.11' 'tmux' 'pyside6')
+makedepends=('python-build' 'python-installer' 'python-hatchling' 'python-wheel')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "tmux-tray-manager-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+package() {
+  cd "tmux-tray-manager-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

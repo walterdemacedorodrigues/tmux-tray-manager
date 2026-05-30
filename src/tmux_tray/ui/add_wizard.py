@@ -39,6 +39,7 @@ from tmux_tray.startup.naming import (
 )
 from tmux_tray.startup.registry import Entry, load_entries
 from tmux_tray.startup.xdg import desktop_file_path
+from tmux_tray.ui.resources import app_icon
 
 
 class AddWizardDialog(QDialog):
@@ -47,6 +48,7 @@ class AddWizardDialog(QDialog):
         self.existing = existing
         self.entry: Optional[Entry] = None
         self.setWindowTitle("Edit Startup Entry" if existing else "Add Startup Entry")
+        self.setWindowIcon(app_icon())
         self.resize(680, 560)
 
         self._slug_is_auto = existing is None

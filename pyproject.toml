@@ -39,7 +39,8 @@ Repository = "https://github.com/walterdemacedorodrigues/tmux-tray-manager"
 packages = ["src/tmux_tray"]
 
 [tool.hatch.build.targets.wheel.shared-data]
-"assets/icons/tmux-tray.svg" = "share/icons/hicolor/scalable/apps/tmux-tray.svg"
+"src/tmux_tray/assets/icons/tmux-tray.svg" = "share/icons/hicolor/scalable/apps/tmux-tray.svg"
+"src/tmux_tray/assets/tmux-tray.desktop" = "share/applications/tmux-tray.desktop"
 
 [dependency-groups]
 dev = [

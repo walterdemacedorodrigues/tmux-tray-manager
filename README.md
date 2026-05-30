@@ -30,11 +30,28 @@ Tmux Tray is a lightweight Python + Qt6 application that sits quietly in your sy
 
 ## ⚙️ Installation
 
-### Native packages (recommended)
+### Arch / Manjaro / Garuda
 
-Pre-built packages for **Arch (PKGBUILD)**, **Debian/Ubuntu (.deb)** and **Fedora/openSUSE (.rpm)** are published on the [Releases page](https://github.com/walterdemacedorodrigues/tmux-tray-manager/releases).
+```bash
+cd packaging
+makepkg -si        # builds and installs from PKGBUILD
+```
 
-### From source (dev)
+### Debian / Ubuntu / Mint, Fedora / openSUSE / RHEL
+
+Requires `fpm` (Ruby gem) and `uv` on the build host:
+
+```bash
+gem install --user-install fpm   # if you don't have it
+./packaging/build-packages.sh    # produces dist/*.deb and dist/*.rpm
+sudo apt install ./dist/tmux-tray_*.deb        # Debian family
+sudo dnf install ./dist/tmux-tray-*.rpm        # Fedora family
+sudo zypper install ./dist/tmux-tray-*.rpm     # openSUSE
+```
+
+After install, launch from your application menu or run `tmux-tray &`.
+
+### From source (development)
 
 Requires [`uv`](https://docs.astral.sh/uv/):
 
@@ -42,15 +59,13 @@ Requires [`uv`](https://docs.astral.sh/uv/):
 git clone https://github.com/walterdemacedorodrigues/tmux-tray-manager.git
 cd tmux-tray-manager
 uv sync
-uv run tmux-tray
+uv run tmux-tray            # add --debug for verbose stderr logs
 ```
 
-Or with plain `pip`:
-
-```bash
-pip install --user .
-tmux-tray &
-```
+> **Note (dev mode):** without a system install the taskbar icon falls
+> back to the Wayland generic icon — KDE Plasma needs the `.desktop`
+> in `/usr/share/applications/` to resolve the icon via `app_id`.
+> The window decoration icon still uses our bundled SVG.
 
 ---
 
