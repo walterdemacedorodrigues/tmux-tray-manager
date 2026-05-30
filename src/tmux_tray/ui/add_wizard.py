@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -69,7 +70,7 @@ class AddWizardDialog(QDialog):
 
         self.detection_label = QLabel("Pick a script to see detection results.")
         self.detection_label.setWordWrap(True)
-        self.detection_label.setTextFormat(1)  # RichText
+        self.detection_label.setTextFormat(Qt.TextFormat.RichText)
         self.detection_label.setStyleSheet(
             "QLabel { padding: 10px; background: rgba(128,128,128,0.08); "
             "border-radius: 4px; }"
